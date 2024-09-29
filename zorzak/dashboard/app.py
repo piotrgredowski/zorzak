@@ -1,5 +1,3 @@
-import enum
-import logging
 import pathlib
 import typing as t
 
@@ -9,31 +7,11 @@ import panel as pn
 import pydantic
 from loguru import logger
 
+from zorzak.common.files import AnalysisFile, AnalysisFileCategory
 from zorzak.common.observer import BaseSubscriber, SimplePublisher
+from zorzak.common.renderer import get_renderers
 
 pn.extension()
-
-
-class AnalysisFileCategory(enum.StrEnum):
-    pstats = enum.auto()
-
-
-class AnalysisFile(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
-
-    name: str
-    category: AnalysisFileCategory
-    date_uploaded: arrow.Arrow = pydantic.Field(default_factory=arrow.now)
-    content: bytes
-
-    def __repr__(self):
-        return f"<{self.__repr_name__}>(name={self.name})"
-
-    def get_date_uploaded_short(self):
-        return self.date_uploaded.format("HH:mm:ss")
-
-    def get_date_uploaded_long(self):
-        return self.date_uploaded.format("YYYY-MM-DD HH:mm:ss")
 
 
 class AppState(pydantic.BaseModel):
@@ -83,9 +61,7 @@ class AppView:
     _analysis_files: list[AnalysisFile]
     _analysis_file_subscriber: t.Any
 
-    def __init__(
-        self, logger: logging.Logger, analysis_files: list[AnalysisFile] | None = None
-    ):
+    def __init__(self, logger: t.Any, analysis_files: list[AnalysisFile] | None = None):
         self.logger = logger
 
         self.main_container = pn.Row()
@@ -134,13 +110,17 @@ class AppView:
             else:
                 tab_name = f"{file_.get_date_uploaded_long()} {file_.name}"
 
-            tab_content = pn.pane.Markdown(
-                f"""
-# {file_.name}
+            renderers = get_renderers(file_.category)
 
-Description: abcd
-""".strip()
-            )
+            tab_content = []
+
+            for renderer in renderers:
+                tab_content.append((renderer.__name__, renderer(pstats_file=file_)))
+
+            if len(tab_content) > 1:
+                tab_content = pn.Tabs(*tab_content, tabs_location="above")
+            else:
+                tab_content = tab_content[0][1]
             tabs.append((tab_name, pn.Column(tab_content)))
 
         self.right_column.clear()
@@ -163,9 +143,7 @@ Description: abcd
         return self.main_container
 
 
-def get_servable_app():
-    # Create a Panel widget
-
+def _get_dummy_analysis_files():
     filename = "_profile_data.profile.pstats"
     content = pathlib.Path(filename).read_bytes()
     analysis_files = [
@@ -175,8 +153,11 @@ def get_servable_app():
             content=content,
         )
     ]
+    return analysis_files
 
-    app_view = AppView(logger=logger, analysis_files=analysis_files)
+
+def get_servable_app():
+    app_view = AppView(logger=logger, analysis_files=_get_dummy_analysis_files())
     app_view.servable()
 
     return app_view
