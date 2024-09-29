@@ -1,4 +1,6 @@
 import enum
+import pathlib
+import tempfile
 
 import arrow
 import pydantic
@@ -24,3 +26,9 @@ class AnalysisFile(pydantic.BaseModel):
 
     def get_date_uploaded_long(self):
         return self.date_uploaded.format("YYYY-MM-DD HH:mm:ss")
+
+    def save_to_temporary_file(self) -> pathlib.Path:
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+
+        temp_file.write(self.content)
+        return pathlib.Path(temp_file.name)
